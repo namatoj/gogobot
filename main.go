@@ -10,6 +10,34 @@ import (
 	"strings"
 )
 
+const (
+	GenmoveBlack = "genmove black\n"
+	GenmoveWhite = "genmove white\n"
+)
+
+func generateMove(blackToPlay bool, stdin io.WriteCloser) {
+	command := GenmoveWhite
+	if blackToPlay {
+		command = GenmoveBlack
+	}
+	io.WriteString(stdin, command)
+
+}
+
+func endGameSession(stdin io.WriteCloser) {
+	io.WriteString(stdin, "showboard\n")
+	io.WriteString(stdin, "final_score\n")
+	io.WriteString(stdin, "quit\n")
+}
+
+func gameSetup(stdin io.WriteCloser, scanner *bufio.Scanner) {
+	io.WriteString(stdin, "komi 6.5\n")
+	io.WriteString(stdin, "boardsize 9\n")
+	scanner.Scan()
+	scanner.Scan()
+	scanner.Scan()
+}
+
 func playGo() {
 	cmd := exec.Command("/usr/games/gnugo", "--mode", "gtp")
 
@@ -28,17 +56,12 @@ func playGo() {
 		log.Fatal(err)
 	}
 
+	// TODO: Add the above to the gameSetup function
 	scanner := bufio.NewScanner(stdout)
-	io.WriteString(stdin, "komi 6.5\n")
-	io.WriteString(stdin, "boardsize 9\n")
-	scanner.Scan()
-	scanner.Scan()
+	gameSetup(stdin, scanner)
 
 	blackToPlay := true
-	genmoveBlack := "genmove black\n"
-	genmoveWhite := "genmove white\n"
 	moves := 0
-	command := genmoveBlack
 	consecutivePasses := 0
 
 	for scanner.Scan() {
@@ -53,7 +76,8 @@ func playGo() {
 			break
 		}
 
-		if strings.HasPrefix(text, "= ") && moves > 0 {
+		matchIsOver := consecutivePasses >= 2
+		if strings.HasPrefix(text, "= ") && moves > 0 && !matchIsOver {
 			if blackToPlay {
 				fmt.Println("Move", moves, ": White plays", text)
 			} else {
@@ -71,21 +95,14 @@ func playGo() {
 			}
 		}
 
-		if len(text) == 0 {
-			if consecutivePasses < 2 {
-				if blackToPlay {
-					command = genmoveBlack
-					blackToPlay = false
-				} else {
-					command = genmoveWhite
-					blackToPlay = true
-				}
-				io.WriteString(stdin, command)
+		isReadyForInput := len(text) == 0
+		if isReadyForInput {
+			if !matchIsOver {
+				generateMove(blackToPlay, stdin)
+				blackToPlay = !blackToPlay
 				moves++
 			} else {
-				io.WriteString(stdin, "showboard\n")
-				io.WriteString(stdin, "final_score\n")
-				io.WriteString(stdin, "quit\n")
+				endGameSession(stdin)
 			}
 		}
 	}
